@@ -1,0 +1,490 @@
+/**
+ * This program has basic CRUD (Create, Read, Update, Delete) functionality and allows the user to perform CRUD functions
+ * to manage recipes. In addition to this, the user can generate random meal plans from the recipes they have previously stored.
+ * Data is stored in a MySQL database hosted on AWS.
+ * 
+ * @author Ammar A
+ */
+package recipePackage;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+
+public class Client {
+	// Specifies 
+	public static String driver = "com.mysql.cj.jdbc.Driver";
+	public static String url = "jdbc:mysql://localhost:3306/recipe_database";
+	public static String username = "admin";
+	public static String password = "PASSWORD";
+	
+	/**
+	 * Main method
+	 */
+	public static void main(String[] args) {
+		try {
+			System.out.println("Welcome to Ammar's Recipe Tracker! \n");
+			System.out.println("Connecting to database...");
+			
+			// Connect to database
+			Class.forName(driver);
+			Connection con = DriverManager.getConnection(url, username, password);
+			System.out.println("Successfully connected to database!");
+			//Scanner input = new Scanner(System.in);
+			
+			// Program runs while run is true
+			boolean run = true;	
+			while (run == true) {	
+				int userInput = mainMenuPrompt();	// User's choice of action
+				switch (userInput) {	// Switch statement that carries out the appropriate action based on userInput
+			
+				case 1: {	// allow user to search for and read a recipe
+					String recipeToRead = "";	// String that will contain the name of the recipe to be read
+					try {
+						// Get name of recipe to read from user
+						recipeToRead = readRecipePrompt();
+						
+					} catch (Exception e) {	// Handles exception for if the user chooses to cancel
+						System.out.println("Stopped reading a recipe. \n");
+						break;
+					}
+					// Create a new recipe object and print out the entry for the recipe by the name of userInput
+					Recipe readRecipe = new Recipe(recipeToRead);
+					String output = readRecipe.readFromDB(con);
+					if (output == null) {	// If no entry was found, inform user and break
+						System.out.println("\nNo such entry exists.\n");
+						break;
+					}
+					System.out.println(output);
+					break;
+				} // end case 1
+				
+				case 2: {	// allow user to add a recipe
+					String newName = "";	// Name for new recipe
+					String newCat = "";		// Category for new recipe
+					String newDesc = "";	// Description for new recipe
+					try {
+						newName = addRecipePromptName().toUpperCase();	// Prompts user to choose a name and capitalizes all letters for database compliance
+						// Query database to see if entry by name newName already exists. If it exists, tell user and break
+						Statement sql = con.createStatement();
+						ResultSet result = sql.executeQuery("SELECT * FROM recipes WHERE recipe_name = \"" + newName + "\"");
+						if (result.next()) {
+							System.out.println("Entry with the name " + newName
+									+ " already exists. However, you may update the entry from the main menu.");
+							break;
+						}
+						// Prompt user to get new recipe's category and description
+						newCat = setRecipeCategoryPrompt();
+						newDesc = setRecipeDescPrompt();
+					} catch (Exception e) 	{// Handles exception for if the user chooses to cancel
+						System.out.println("Stopped adding a recipe. \n");
+						break;
+					}
+					// Create new recipe object with user's info and print out to user
+					Recipe newRecipe = new Recipe(newName, newCat, newDesc);
+					System.out.println("This will be your entry: \n" + newRecipe.toString());
+
+					/*
+					 * boolean exitConfirm = false; do { System.out.println("Confirm (Y/N): ");
+					 * Scanner response = new Scanner(System.in); String userResponse =
+					 * response.next().trim().toUpperCase(); if (userResponse == "Y") { exitConfirm
+					 * = false; } else if(userResponse == "N") {
+					 * System.out.println("Canceling new recipe..."); response.close(); break; }
+					 * else { System.out.println("Please make a valid choice."); } } while
+					 * (exitConfirm == false);
+					 */
+					// Enter new recipe into database and break
+					newRecipe.enterIntoDB(con);
+					break;
+				} // end case 2
+			
+				case 3: {	// allow user to update recipe
+					String searchName = "";		// Name of recipe to edit
+					String newCategory = "";	// New category
+					String newDescription = "";	// New description
+					try {
+						searchName = editRecipePrompt();	// Prompt user for the name of the recipe to edit and store
+						// Query database to see if the recipe exists
+						Statement sql = con.createStatement();
+						ResultSet result = sql.executeQuery("SELECT * FROM recipes WHERE recipe_name = \"" + searchName + "\"");
+						if (!result.next()) {	// If no entry exists, inform user and break
+							System.out.println("Entry with the name " + searchName	+ " does not exist. However, you may create a new entry from the main menu.");
+							break;
+						}
+						// Prompt user for new category and description
+						newCategory = setRecipeCategoryPrompt();
+						newDescription = setRecipeDescPrompt();
+					} catch (Exception e) {	// Handles exception for if the user chooses to cancel
+						System.out.println("Canceled editing a recipe. \n");
+						break;
+					}
+					// Create new recipe object using the user input and upload it to database
+					Recipe updateRecipe = new Recipe(searchName, newCategory, newDescription);
+					updateRecipe.editFromDB(con);
+					break;
+				} // end case 3
+				
+				case 4: {	// allow user to choose and delete a recipe
+					String recipeToDelete = "";	// Name of the recipe to delete
+					String deletedCategory = "";	// Category of the recipe being deleted
+					String deletedDesc = "";	// Description of the recipe being deleted
+					try {
+						recipeToDelete = deleteRecipePrompt();	// Prompt user for the name of the recipe to delete
+						// Query database to see if the recipe exists. If it doesn't, tell user and break
+						Statement sql = con.createStatement();
+						ResultSet result = sql.executeQuery("SELECT * FROM recipes WHERE recipe_name = \"" + recipeToDelete + "\"");
+						if (!result.next()) {
+							System.out.println(
+									"Entry with the name " + recipeToDelete + " does not exist. Nothing deleted.");
+							break;
+						}
+						// Store recipe category and description
+						deletedCategory = result.getString("recipe_category");
+						deletedDesc = result.getString("description");
+					} catch (Exception e) {	// Handles exception for if the user chooses to cancel
+						System.out.println("Canceled deleting a recipe. \n");
+						break;
+					}
+					// Create new recipe object and remove from database
+					Recipe deletedRecipe = new Recipe(recipeToDelete, deletedCategory, deletedDesc);
+					System.out.println("The following entry was deleted:\n" + deletedRecipe.toString());
+					
+					/* Future feature to ask user for confirmation prior to deleting entry
+					 * Work in progress
+					 * // Scanner confirm = new Scanner(System.in);
+					 * System.out.println("\t1 - Yes, delete entry\n\t2 - No, cancel deletion");
+					 * 
+					 * boolean cont = true; try { while (cont) { int userConfirm =
+					 * confirm.nextInt(); if (userConfirm == 1) { System.out.println("Confirmed.");
+					 * cont = false; } else if (userConfirm == 2) { confirm.next(); throw new
+					 * Exception("User cancel"); }
+					 * System.out.println("Please make a valid selection."); } } catch
+					 * (InputMismatchException e) { System.out.println("Deletion canceled.");
+					 * confirm.close(); break; }
+					 */
+					// confirm.close();
+					deletedRecipe.removeFromDB(con);
+					break;
+				} // end case 4
+				
+				case 5: {	// generate a meal plan
+					int numDays = 0;	// Number of days for which to generate a meal plan
+					try {
+						numDays = generateMealPlanPrompt();	// Prompts user for how many days to generate a plan for
+					} catch (Exception e) {	// Handles exception for if the user chooses to cancel
+						System.out.println("Canceling...");
+						break;
+					}
+					System.out.println("Generating...\n");
+					System.out.println("\n\nBEGINING OF " + numDays + " LONG MEAL PLAN:");
+					// For every day the user wants a meal plan, generate a DayPlan and print out and break
+					for(DayPlan plan : generateMealPlan(numDays, con, false)) {
+						System.out.println(plan.toString());
+					}
+					System.out.println("\n\nEND OF " + numDays + " LONG MEAL PLAN:");
+					break;
+				} // end case 5
+				
+				case 0: {	// Case where user wants to exit program
+					run = false;
+					break;
+				} // end case 0
+				default:	// Default case for when the user makes an invalid choice
+					System.out.println("Please make a valid choice");
+				}
+			} // end while loop
+		
+			// Close database connection and exit program
+			System.out.println("Terminating database connection...");
+			con.close();
+			System.out.println("See you soon!");
+
+		} catch (ClassNotFoundException e1) {	// Exception for when JDBC drivers cannot be found
+			System.out.println("Where is your MySQL JDBC driver?");
+			e1.printStackTrace();
+		} catch(com.mysql.cj.jdbc.exceptions.CommunicationsException e2) {	// Exception for when the program fails to connect to the database
+			System.out.println("Failed to connect to database. Make sure you have internet and the database is online, then restart the program.");
+			e2.printStackTrace();
+		}	catch (SQLException e3) {	// Exception for all other SQL exceptions
+			System.out.println("An SQL Exception has occured");
+			e3.printStackTrace();
+		}	// end try/catch 
+	} // end main
+
+	/**
+	 * Prompts the main menu and allows the user to decide what to do
+	 * @return	Returns the choice the user made as an int
+	 */
+	static int mainMenuPrompt() {
+		boolean validInput = false;	// Determines if the user input is valid
+		int inputValue = 0;	// Stores user input
+		do {	// Do while loop that will loop until vaildInput is true
+			System.out.println(
+					"-------------------------------------------------------------------------------------\n\nMAIN MENU\n\n-------------------------------------------------------------------------------------");
+			System.out.println("\nSelect an action or type QUIT to exit program: \n");
+			System.out.println("\t 1 - Read a recipe");
+			System.out.println("\t 2 - Add a recipe");
+			System.out.println("\t 3 - Update an existing recipe");
+			System.out.println("\t 4 - Delete a recipe");
+			System.out.println("\t 5 - Generate a meal plan");
+			System.out.println("\t 0 - Quit program");
+			@SuppressWarnings("resource")
+			Scanner input = new Scanner(System.in);
+			try {
+				// Collects user input and set validInput to true
+				inputValue = input.nextInt();	
+				validInput = true;
+			} catch (Exception e) {	// Handles exception for if the user inputs an invalid value
+				System.out.println("Please use a valid input. \n");
+				System.out.println("Got here");
+				
+			}
+		} while (validInput == false);
+		return inputValue;	// returns user's input
+	}
+
+	/*
+	 * NOTE TO SELF: Rework Prompt type methods to accept a Scanner as a parameter so only one Scanner needs to be created and can
+	 * be passed as a parameter. This one Scanner can then be closed at the end of the program.
+	 */
+	
+	/**
+	 * Prompts the user to enter what recipe they would like to read
+	 * @return	Returns the name of the recipe the user would like to read as a String
+	 * @throws	Exception	Throws an exception if the user cancels
+	 */
+	static String readRecipePrompt() throws Exception {
+		boolean validInput = false;	// Determines if the user input is valid
+		String inputValue = "";
+		
+		//Scanner input = new Scanner(System.in);
+		do {	// Do while loop that will loop until vaildInput is true
+			System.out.print("Enter the name of the recipe you would like to read or enter 0 to return to the main menu: ");	
+			@SuppressWarnings("resource")
+			Scanner input = new Scanner(System.in);
+			try {
+				inputValue = input.nextLine().trim().toUpperCase();
+				validInput = true;
+			} catch (Exception e) {	// Handles exception for if the user inputs an invalid value
+				System.out.println("Please use a valid input. \n");
+			}
+			// input.close();	Causes infinite loop. Why?
+		} while (validInput == false);
+		if (inputValue.trim().equals("0")) {	// Throws exception if the user wants to quit
+			Exception userQuit = new Exception();
+			throw userQuit;
+		}
+		return inputValue;
+	}
+
+	/**
+	 * Prompts the user to enter the name of the recipe they'd like to create
+	 * @return	Returns the name of the recipe the user would like to create as a String
+	 * @throws	Exception	Throws an exception if the user cancels
+	 */
+	static String addRecipePromptName() throws Exception {
+		boolean validInput = false;	// Determines if the user input is valid
+		String inputValue = "";
+		do {	// Do while loop that will loop until vaildInput is true
+			System.out.print(
+					"Enter the name of the recipe you would like to create or enter 0 to cancel and return to the main menu: ");
+			@SuppressWarnings("resource")
+			Scanner input = new Scanner(System.in);
+			try {
+				inputValue = input.nextLine().trim().toUpperCase();
+				validInput = true;
+			} catch (Exception e) {	// Handles exception for if the user inputs an invalid value
+				System.out.println("Please use a valid input. \n");
+			}
+		} while (validInput == false);
+		if (inputValue.trim().equals("0")) {	// Throws exception if the user wants to quit
+			Exception userQuit = new Exception();
+			throw userQuit;
+		}
+		return inputValue;
+	}
+
+	/**
+	 * Prompts the user to enter the category of the recipe they'd like to create
+	 * @return	Returns the category of the recipe the user would like to create as a String
+	 * @throws	Exception	Throws an exception if the user cancels
+	 */
+	static String setRecipeCategoryPrompt() throws Exception {
+		boolean validInput = false;	// Determines if the user input is valid
+		int inputValue = 0;
+		do {	// Do while loop that will loop until vaildInput is true
+			System.out.print("Select the category of the recipe or enter 0 to cancel and return to the main menu: \n");
+			System.out.println("\t1 - Breakfast");
+			System.out.println("\t2 - Lunch");
+			System.out.println("\t3 - Dinner");
+			System.out.println("\t4 - Snack");
+			System.out.println("\t0 - Cancel");
+			@SuppressWarnings("resource")
+			Scanner input = new Scanner(System.in);
+			try {
+				inputValue = input.nextInt();
+				validInput = true;
+			} catch (Exception e) {	// Handles exception for if the user inputs an invalid value
+				// TODO Auto-generated catch block
+				System.out.println("Please use a valid input. \n");
+			}
+		} while (validInput == false);
+		if (inputValue == 0) {	// Throws exception if the user wants to quit
+			Exception userQuit = new Exception();
+			throw userQuit;
+		}
+		switch (inputValue) {
+		case 1: {
+			return "Breakfast";
+		}
+		case 2: {
+			return "Lunch";
+		}
+		case 3: {
+			return "Dinner";
+		}
+		case 4: {
+			return "Snack";
+		}
+		default:
+			return "";
+		}
+	} // end addRecipePrompt
+
+	/**
+	 * Prompts the user to enter the description of the recipe they'd like to create
+	 * @return	Returns the description of the recipe the user would like to create as a String
+	 * @throws	Exception	Throws an exception if the user cancels
+	 */
+	static String setRecipeDescPrompt() throws Exception {
+		boolean validInput = false;	// Determines if the user input is valid
+		String inputValue = "";
+		do {	// Do while loop that will loop until vaildInput is true
+			System.out.print("Enter a description of the recipe or enter 0 to cancel and return to the main menu: ");
+			@SuppressWarnings("resource")
+			Scanner input = new Scanner(System.in);
+			try {
+				inputValue = input.nextLine().trim();
+				validInput = true;
+			} catch (Exception e) {	// Handles exception for if the user inputs an invalid value
+				// TODO Auto-generated catch block
+				System.out.println("Please use a valid input. \n");
+			}
+		} while (validInput == false);
+		if (inputValue.trim().equals("0")) {	// Throws exception if the user wants to quit
+			Exception userQuit = new Exception();
+			throw userQuit;
+		}
+		return inputValue;
+	} // end addRecipePrompt
+
+	/**
+	 * Prompts the user to enter what recipe they would like to edit
+	 * @return	Returns the name of the recipe the user would like to read as a String
+	 * @throws	Exception	Throws an exception if the user cancels
+	 */
+	static String editRecipePrompt() throws Exception {
+		boolean validInput = false;	// Determines if the user input is valid
+		String inputValue = "";
+		do {	// Do while loop that will loop until vaildInput is true
+			System.out.print(
+					"Enter the name of the recipe you would like to edit or enter 0 to cancel and return to the main menu: ");
+			@SuppressWarnings("resource")
+			Scanner input = new Scanner(System.in);
+			try {
+				inputValue = input.nextLine().trim().toUpperCase();
+				validInput = true;
+			} catch (Exception e) {	// Handles exception for if the user inputs an invalid value
+				System.out.println("Please use a valid input. \n");
+			}
+		} while (validInput == false);
+		if (inputValue.trim().equals("0")) {	// Throws exception if the user wants to quit
+			Exception userQuit = new Exception();
+			throw userQuit;
+		}
+		return inputValue;
+	} // end editRecipePrompt
+
+	/**
+	 * Prompts the user to enter the name of the recipe they'd like to delete
+	 * @return	Returns the name of the recipe the user would like to delete as a String
+	 * @throws	Exception	Throws an exception if the user cancels
+	 */
+	static String deleteRecipePrompt() throws Exception {
+		boolean validInput = false;	// Determines if the user input is valid
+		String inputValue = "";
+		do {	// Do while loop that will loop until vaildInput is true
+			System.out.print(
+					"Enter the name of the recipe you would like to delete or enter 0 to cancel and return to the main menu: ");
+			@SuppressWarnings("resource")
+			Scanner input = new Scanner(System.in);
+			try {
+				inputValue = input.nextLine().trim().toUpperCase();
+				validInput = true;
+			} catch (Exception e) {	// Handles exception for if the user inputs an invalid value
+				System.out.println("Please use a valid input. \n");
+			}
+		} while (validInput == false);
+		if (inputValue.trim().equals("0")) {
+			Exception userQuit = new Exception();
+			throw userQuit;
+		}
+
+		return inputValue;
+	} // end deleteRecipePrompt
+
+	/**
+	 * Prompts the user to enter the number of days for which to create a meal plan
+	 * @return	Returns the number of days for which the user would like a meal plan for
+	 * @throws	Exception	Throws an exception if the user cancels
+	 */
+	static int generateMealPlanPrompt() throws Exception {
+		boolean validInput = false;	// Determines if the user input is valid
+		int inputValue = 0;
+		do {	// Do while loop that will loop until vaildInput is true
+			System.out.print(
+					"Enter how many days to create a meal plan for (Max 31) or enter 0 to return to the main menu: ");
+			@SuppressWarnings("resource")
+			Scanner input = new Scanner(System.in);
+			try {
+				inputValue = input.nextInt();
+				if (inputValue > 31) {
+					Exception e = new Exception();
+					throw e;
+				}
+				validInput = true;
+			} catch (Exception e) {	// Handles exception for if the user inputs an invalid value
+				System.out.println("Please use a valid input. \n");
+			}
+		} while (validInput == false);
+		if (inputValue == 0) {	// Throws exception if the user wants to quit
+			Exception userQuit = new Exception();
+			throw userQuit;
+		}
+		return inputValue;
+	} // end generateMealPlanPrompt;
+
+	/**
+	 * Generates a list of DayPlan objects that store meal plans
+	 * @param numberDays	Number of days for which to generate a meal plan
+	 * @param con			Connection to SQL database
+	 * @param generateFile	If set to true, will generate a text file with the generated meal plan
+	 * @return				Returns a List of numberDays amount DayPlan objects
+	 */
+	static List<DayPlan> generateMealPlan(int numberDays, Connection con, boolean generateFile) {
+		// Will generate a meal plan for numberDays days, print out meal plan, and write
+		// meal plan to a file if generateFile == true
+		List<DayPlan> totalPlan = new ArrayList<DayPlan>();
+		for (int i = 1; i < numberDays+1; i++) {
+			DayPlan newDay = new DayPlan(con,i);
+			totalPlan.add(newDay);
+		}
+		return totalPlan;
+
+	}
+
+} // end Client
